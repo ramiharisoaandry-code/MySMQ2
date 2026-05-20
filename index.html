@@ -33,8 +33,7 @@
     .login-box .btn:hover { transform: translateY(-2px); box-shadow: 0 6px 12px rgba(0,86,179,0.3); }
     .forgot-password { display: block; margin-top: 1rem; color: var(--primary); text-decoration: none; font-size: 0.9rem; transition: all 0.3s; font-weight: 500; }
     .forgot-password:hover { color: var(--primary-dark); text-decoration: underline; }
-    .demo-accounts { margin-top: 1.5rem; padding: 1rem; border-top: 1px solid var(--border); font-size: 0.8rem; color: var(--text-light); text-align: left; background: linear-gradient(135deg, #f8f9fa, #e9ecef); border-radius: 6px; }
-    .demo-accounts code { background: #e9ecef; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }
+
 
     /* MAIN APP */
     #main-app { display: none; animation: fadeIn 0.5s ease; }
@@ -337,11 +336,6 @@
         <button type="submit" class="btn">Connexion</button>
         <a href="#" class="forgot-password" onclick="showForgotPassword(); return false;">Si mot de passe oublié ?</a>
       </form>
-      <div class="demo-accounts">
-        <strong>🔑 Comptes de démonstration :</strong><br>
-        👑 Admin : <code>admin</code> / <code>admin123</code><br>
-        👤 Utilisateurs : <code>qualite</code>, <code>prod</code>, <code>maint</code> / <code>user123</code>
-      </div>
     </div>
   </div>
 
@@ -865,9 +859,12 @@
 
       <!-- NEW SECTION: FAC VIEW (CONSULTATION MODE) -->
       <section id="fac-view" class="section">
-        <div style="margin-bottom:1rem; display:flex; justify-content:space-between;">
+        <div style="margin-bottom:1rem; display:flex; justify-content:space-between; align-items:center;">
           <h2>👁️ Visualisation FAC</h2>
-          <button class="btn secondary" onclick="showSection('liste')">↩️ Retour au registre</button>
+          <div style="display:flex; gap:0.7rem;">
+            <button class="btn print" onclick="updatePrintHeader();window.print()" title="Imprimer cette FAC">🖨️ Imprimer</button>
+            <button class="btn secondary" onclick="showSection('liste')">↩️ Retour au registre</button>
+          </div>
         </div>
 
         <!-- LOCKED BANNER FOR VIEW -->
@@ -1968,6 +1965,7 @@
           <td class="no-print">
             <div class="action-buttons">
               <button class="btn small view" onclick="viewFAC('${f.id}')" title="Voir">👁️</button>
+              <button class="btn small print" onclick="printFAC('${f.id}')" title="Imprimer">🖨️</button>
               ${canEdit && !isLocked ? `<button class="btn small view" onclick="editFAC('${f.id}')" title="Modifier">✏️</button>` : (isLocked ? '<span style="color:var(--text-light); font-size:0.75rem;" title="Verrouillé par un autre utilisateur">🔒</span>' : '<span style="color:var(--text-light); font-size:0.75rem;">🔒</span>')}
               ${canEdit && !isLocked ? `<button class="btn small danger" onclick="deleteFAC('${f.id}')" title="Supprimer">🗑️</button>` : ''}
             </div>
@@ -2516,6 +2514,40 @@
     }
 
     // ---- Update print header before printing ----
+    // ---- PRINT FAC DEPUIS LA LISTE ----
+    function printFAC(id) {
+      const f = facData.find(x => x.id === id);
+      if (!f) { showToast('FAC introuvable', true); return; }
+
+      // Pré-remplir l'en-tête d'impression
+      const pNum    = document.getElementById('print-fac-num');
+      const pDate   = document.getElementById('print-fac-date');
+      const pEmit   = document.getElementById('print-fac-emitter');
+      const pStat   = document.getElementById('print-fac-status');
+      if (pNum)  pNum.textContent  = f.number  || '-';
+      if (pDate) pDate.textContent = f.date     || '-';
+      if (pEmit) pEmit.textContent = f.emitter  || '-';
+      if (pStat) pStat.textContent = f.status   || '-';
+
+      // Charger la FAC en vue consultation (sans afficher la section)
+      editFAC(id, true);
+
+      // Attendre le rendu puis imprimer
+      setTimeout(() => {
+        // S'assurer que fac-form est visible pour l'impression
+        const formSection = document.getElementById('fac-form');
+        const prevDisplay = formSection ? formSection.style.display : '';
+        if (formSection) formSection.style.display = 'block';
+
+        window.print();
+
+        // Restaurer l'état après impression
+        setTimeout(() => {
+          if (formSection) formSection.style.display = prevDisplay;
+        }, 500);
+      }, 400);
+    }
+
     function updatePrintHeader() {
       const num = document.getElementById('fac-number').value;
       const date = document.getElementById('fac-date').value;
