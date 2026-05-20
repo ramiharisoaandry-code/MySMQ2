@@ -661,11 +661,16 @@
 
               <div class="form-group" style="margin-top:1rem;">
                 <label>Statut</label>
-                <select id="fac-status" required>
+                <select id="fac-status" required onchange="onStatusChange(this)">
                   <option value="Ouvert">Ouvert</option>
                   <option value="En cours">En cours</option>
-                  <option value="Clôturé">Clôturé</option>
+                  <option value="Clôturé" id="opt-cloture">Clôturé</option>
                 </select>
+                <div id="closure-date-row" style="margin-top:0.6rem; display:none;">
+                  <label style="font-size:0.82rem; color:var(--text-light);">📅 Date de clôture</label>
+                  <input type="date" id="fac-closed-at" style="margin-top:0.3rem;">
+                  <small style="color:var(--text-light); font-size:0.78rem;">Remplie automatiquement à la clôture</small>
+                </div>
               </div>
 
               <!-- HISTORY BOX -->
@@ -1223,6 +1228,13 @@
         document.getElementById('fac-number').value = `FAC-2026-${String(facData.length + 1).padStart(3, '0')}`;
         document.getElementById('fac-date').valueAsDate = new Date();
         document.getElementById('fac-status').value = 'Ouvert';
+        // Désactiver Clôturé pour non-admin
+        const optCl = document.getElementById('opt-cloture');
+        if (optCl) optCl.disabled = currentUser.role !== 'admin';
+        const crRow = document.getElementById('closure-date-row');
+        if (crRow) crRow.style.display = 'none';
+        const caInp = document.getElementById('fac-closed-at');
+        if (caInp) caInp.value = '';
         document.getElementById('fac-history').style.display = 'none';
         currentAttachments = [];
         renderAttachments();
@@ -1802,6 +1814,11 @@
       const decision = document.querySelector('input[name="decision"]:checked')?.value || '';
       const ncCat = document.querySelector('input[name="nc-cat"]:checked')?.value || '';
       const status = document.getElementById('fac-status').value;
+      // Bloquer la clôture aux non-admin
+      if (status === 'Clôturé' && currentUser.role !== 'admin') {
+        showToast('⛔ Seuls les administrateurs peuvent clôturer une FAC.', true);
+        return;
+      }
       
       const curative = [];
       document.querySelectorAll('#curative-table tbody tr').forEach(tr => {
@@ -1876,6 +1893,12 @@
         efficacyVisa: document.getElementById('effic-visa').value,
         efficacyResp: document.getElementById('effic-resp').value,
         status: status,
+        closedAt: status === 'Clôturé'
+          ? (document.getElementById('fac-closed-at').value || new Date().toISOString().slice(0,10))
+          : (editId ? (facData.find(f => f.id === editId)?.closedAt || null) : null),
+        closedBy: status === 'Clôturé'
+          ? (editId && facData.find(f => f.id === editId)?.closedBy ? facData.find(f => f.id === editId).closedBy : currentUser.fullName)
+          : null,
         attachments: currentAttachments,
         updatedAt: now,
         updatedBy: currentUser.fullName,
@@ -1960,14 +1983,14 @@
           <td>${f.lot || '-'}</td>
           <td>${(f.types || []).join(', ') || '-'}</td>
           <td><span class="badge ${f.ncCategory?.toLowerCase() || 'mineure'}">${f.ncCategory || '-'}</span></td>
-          <td><span class="badge ${f.status === 'Clôturé' ? 'completed' : f.status === 'En cours' ? 'active' : 'active'}">${f.status}</span> ${isLocked ? '<span class="badge locked">🔒</span>' : ''}</td>
+          <td><span class="badge ${f.status === 'Clôturé' ? 'completed' : f.status === 'En cours' ? 'active' : 'active'}">${f.status}</span>${f.closedAt && f.status==='Clôturé' ? ` <span style='font-size:0.72rem;color:var(--text-light);'>${f.closedAt}</span>` : ''} ${isLocked ? '<span class="badge locked">🔒</span>' : ''}</td>
           <td style="text-align:right;">${(f.costTotal||0).toLocaleString('fr-FR')}</td>
           <td class="no-print">
             <div class="action-buttons">
               <button class="btn small view" onclick="viewFAC('${f.id}')" title="Voir">👁️</button>
               <button class="btn small print" onclick="printFAC('${f.id}')" title="Imprimer">🖨️</button>
               ${canEdit && !isLocked ? `<button class="btn small view" onclick="editFAC('${f.id}')" title="Modifier">✏️</button>` : (isLocked ? '<span style="color:var(--text-light); font-size:0.75rem;" title="Verrouillé par un autre utilisateur">🔒</span>' : '<span style="color:var(--text-light); font-size:0.75rem;">🔒</span>')}
-              ${canEdit && !isLocked ? `<button class="btn small danger" onclick="deleteFAC('${f.id}')" title="Supprimer">🗑️</button>` : ''}
+              ${isAdmin && !isLocked ? `<button class="btn small danger" onclick="deleteFAC('${f.id}')" title="Supprimer (Admin)">🗑️</button>` : ''}
             </div>
           </td>
         </tr>
@@ -1989,6 +2012,13 @@
       const ccArr = Array.isArray(f.cc) ? f.cc : (f.cc ? [f.cc] : []); document.getElementById('view-cc').textContent = ccArr.length ? ccArr.join(', ') : '-';
       document.getElementById('view-types').textContent = (f.types || []).join(', ') || '-';
       document.getElementById('view-status').textContent = f.status;
+      // Afficher infos clôture
+      const viewStatusEl = document.getElementById('view-status');
+      if (f.status === 'Clôturé' && (f.closedAt || f.closedBy)) {
+        viewStatusEl.innerHTML = `<strong>Clôturé</strong>&nbsp;
+          ${f.closedAt ? `<span style="color:var(--text-light);font-size:0.85rem;">le ${f.closedAt}</span>` : ''}
+          ${f.closedBy ? `<span style="color:var(--text-light);font-size:0.85rem;">par ${f.closedBy}</span>` : ''}`;
+      }
 
       // Section 1
       document.getElementById('view-section-1').innerHTML = `
@@ -2097,6 +2127,19 @@
       document.getElementById('fac-cc').value = JSON.stringify(ccVal);
       renderTagsFromArray('cc', ccVal);
       document.getElementById('fac-status').value = f.status || 'Ouvert';
+      // Gérer affichage date clôture
+      const closedAtInp = document.getElementById('fac-closed-at');
+      const closureRow  = document.getElementById('closure-date-row');
+      if (f.status === 'Clôturé') {
+        closedAtInp.value = f.closedAt || new Date().toISOString().slice(0,10);
+        if (closureRow) closureRow.style.display = 'block';
+      } else {
+        closedAtInp.value = '';
+        if (closureRow) closureRow.style.display = 'none';
+      }
+      // Désactiver l'option Clôturé pour les non-admin
+      const optCloture = document.getElementById('opt-cloture');
+      if (optCloture) optCloture.disabled = currentUser.role !== 'admin';
       
       // Load attachments
       currentAttachments = f.attachments || [];
@@ -2233,14 +2276,12 @@
     function deleteFAC(id) {
       const f = facData.find(x => x.id === id);
       if (!f) return;
-      
-      if (f.status === 'Clôturé' && currentUser.role !== 'admin') {
-        showToast('Seuls les administrateurs peuvent supprimer les FAC clôturées', true);
+      if (currentUser.role !== 'admin') {
+        showToast('⛔ Seuls les administrateurs peuvent supprimer une FAC.', true);
         return;
       }
-      
-      if (confirm('Êtes-vous sûr de vouloir supprimer cette FAC ?')) {
-        facData = facData.filter(f => f.id !== id);
+      if (confirm(`Supprimer définitivement la FAC ${f.number} ?\nCette action est irréversible.`)) {
+        facData = facData.filter(x => x.id !== id);
         saveFAC();
         renderList();
         showToast('FAC supprimée avec succès');
@@ -2553,6 +2594,11 @@
       const date = document.getElementById('fac-date').value;
       const emitter = document.getElementById('fac-emitter').value;
       const status = document.getElementById('fac-status').value;
+      // Bloquer la clôture aux non-admin
+      if (status === 'Clôturé' && currentUser.role !== 'admin') {
+        showToast('⛔ Seuls les administrateurs peuvent clôturer une FAC.', true);
+        return;
+      }
       const pNum = document.getElementById('print-fac-num');
       const pDate = document.getElementById('print-fac-date');
       const pEmitter = document.getElementById('print-fac-emitter');
@@ -2563,6 +2609,19 @@
       if (pStatus) pStatus.textContent = status || '-';
     }
 
+
+    // ---- Gestion changement statut ----
+    function onStatusChange(sel) {
+      const closureRow = document.getElementById('closure-date-row');
+      const closedAtInp = document.getElementById('fac-closed-at');
+      if (sel.value === 'Clôturé') {
+        if (closureRow) closureRow.style.display = 'block';
+        if (closedAtInp && !closedAtInp.value) closedAtInp.value = new Date().toISOString().slice(0,10);
+      } else {
+        if (closureRow) closureRow.style.display = 'none';
+        if (closedAtInp) closedAtInp.value = '';
+      }
+    }
 
     // --- INIT ---
     initData();
